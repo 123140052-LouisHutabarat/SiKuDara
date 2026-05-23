@@ -7,6 +7,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from fuzzy_engine import infer_category, get_all_memberships_curve, CATEGORY_CONFIG
+import requests
+import folium
+from streamlit_folium import st_folium
+from streamlit_searchbox import st_searchbox
 
 import sys
 from train_model import ANNModel
@@ -741,45 +745,185 @@ if page == "Prediksi":
       <p class="page-sub">Masukkan parameter cuaca dan polutan untuk memperoleh prediksi nilai PM2.5 beserta kategorinya</p>
     </div>""", unsafe_allow_html=True)
 
+    # API functions
+    def get_weather_data(lat, lon):
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,relative_humidity_2m,dew_point_2m,pressure_msl,wind_speed_10m"
+            f"&timezone=auto"
+        )
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()["current"]
+
+    def get_air_quality_data(lat, lon):
+        url = (
+            f"https://air-quality-api.open-meteo.com/v1/air-quality"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current=pm10,pm2_5,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,ozone,us_aqi"
+            f"&timezone=auto"
+        )
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()["current"]
+
     col_L, col_R = st.columns([11, 10], gap="large")
+
+    run_pred = False
+    feats = {}
 
     # ── INPUT PANEL ──────────────────────────────────────────────────────────
     with col_L:
-        with st.container(border=True):
-            st.markdown('<div class="tag-pill">Parameter Input</div>', unsafe_allow_html=True)
+        tab_map, tab_manual = st.tabs(["Peta Interaktif (Otomatis)", "Input Manual (Fallback)"])
+        
+        with tab_map:
+            st.markdown('<div class="tag-pill">Pencarian & Pemilihan Lokasi</div>', unsafe_allow_html=True)
+            
+            # Inisialisasi session state untuk peta
+            if "map_center" not in st.session_state:
+                st.session_state.map_center = [-5.3971, 105.2668]
+            if "map_zoom" not in st.session_state:
+                st.session_state.map_zoom = 11
+            if "loc_name" not in st.session_state:
+                st.session_state.loc_name = None
+            if "active_lat" not in st.session_state:
+                st.session_state.active_lat = None
+            if "active_lon" not in st.session_state:
+                st.session_state.active_lon = None
+            if "last_click" not in st.session_state:
+                st.session_state.last_click = None
 
-            st.markdown("""
-            <div style="font-size:0.85rem;font-weight:700;color:var(--accent-cyan);margin:0.5rem 0 0.8rem;display:flex;align-items:center;gap:0.4rem;">
-              <span style="font-size:1rem;">🌦️</span> KONDISI ATMOSFER
-            </div>""", unsafe_allow_html=True)
+            with st.container():
+                def search_location_api(searchterm: str) -> list:
+                    if not searchterm:
+                        return []
+                    url = f"https://geocoding-api.open-meteo.com/v1/search?name={searchterm}&count=5&language=id&format=json"
+                    try:
+                        res = requests.get(url, timeout=5)
+                        if res.status_code == 200:
+                            data = res.json().get("results", [])
+                            results = []
+                            for item in data:
+                                name_parts = [item.get("name")]
+                                if item.get("admin2"): name_parts.append(item.get("admin2"))
+                                if item.get("admin1"): name_parts.append(item.get("admin1"))
+                                display_name = ", ".join([p for p in name_parts if p])
+                                results.append(
+                                    (display_name, {"lat": float(item["latitude"]), "lon": float(item["longitude"]), "name": item["name"]})
+                                )
+                            return results
+                    except:
+                        pass
+                    return []
+                    
+                selected_loc = st_searchbox(
+                    search_location_api,
+                    placeholder="🔍 Ketik lokasi (kota, kecamatan, desa) untuk melihat rekomendasi...",
+                    key="loc_searchbox"
+                )
 
-            g1, g2 = st.columns(2)
-            with g1:
-                temp = st.slider("Suhu (°C)",         -10.0, 40.0,  25.0, 0.5)
-                dewp = st.slider("Titik Embun (°C)",  -30.0, 30.0,  10.0, 0.5)
-            with g2:
-                pres = st.slider("Tekanan (hPa)",     990.0,1040.0,1013.0, 0.5)
-                wspm = st.slider("Kec. Angin (m/s)",    0.0, 10.0,   2.0,  0.1)
+                if selected_loc and selected_loc != st.session_state.get("last_searched_loc"):
+                    st.session_state.last_searched_loc = selected_loc
+                    st.session_state.active_lat = selected_loc["lat"]
+                    st.session_state.active_lon = selected_loc["lon"]
+                    st.session_state.map_center = [selected_loc["lat"], selected_loc["lon"]]
+                    st.session_state.map_zoom = 13
+                    st.session_state.loc_name = selected_loc["name"]
+                    st.rerun()
 
-            st.markdown("""
-            <div style="font-size:0.85rem;font-weight:700;color:var(--accent-purple);margin:1.2rem 0 0.8rem;display:flex;align-items:center;gap:0.4rem;">
-              <span style="font-size:1rem;">💨</span> KADAR POLUTAN UDARA
-            </div>""", unsafe_allow_html=True)
+            m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
+            
+            if st.session_state.active_lat is not None and st.session_state.active_lon is not None:
+                folium.Marker(
+                    [st.session_state.active_lat, st.session_state.active_lon],
+                    tooltip=st.session_state.loc_name or "Lokasi Terpilih",
+                    icon=folium.Icon(color="red", icon="info-sign")
+                ).add_to(m)
 
-            g3, g4 = st.columns(2)
-            with g3:
-                so2  = st.slider("SO₂ (µg/m³)",        0.0,200.0,  20.0, 1.0)
-                no2  = st.slider("NO₂ (µg/m³)",        0.0,250.0,  40.0,  1.0)
-            with g4:
-                pm10 = st.slider("PM10 (µg/m³)",       0.0, 500.0, 60.0, 1.0)
+            map_data = st_folium(m, width="100%", height=380, key="map")
+            
+            # Deteksi jika user klik langsung di peta
+            if map_data and map_data.get("last_clicked"):
+                curr_click = map_data["last_clicked"]
+                if curr_click != st.session_state.last_click:
+                    st.session_state.last_click = curr_click
+                    st.session_state.active_lat = curr_click["lat"]
+                    st.session_state.active_lon = curr_click["lng"]
+                    st.session_state.map_center = [curr_click["lat"], curr_click["lng"]]
+                    st.session_state.loc_name = "Koordinat Peta"
+                    st.rerun()
+            
+            # Jika ada koordinat yang aktif, fetch datanya
+            if st.session_state.active_lat is not None and st.session_state.active_lon is not None:
+                lat = st.session_state.active_lat
+                lon = st.session_state.active_lon
+                
+                # Render notifikasi kecil nama tempat
+                st.success(f"**Lokasi:** {st.session_state.loc_name} ({lat:.4f}, {lon:.4f})")
+                
+                try:
+                    with st.spinner("Mengambil data cuaca dan udara..."):
+                        weather = get_weather_data(lat, lon)
+                        air = get_air_quality_data(lat, lon)
+                    
+                    feats = {
+                        "TEMP": weather.get("temperature_2m", 25.0),
+                        "PRES": weather.get("pressure_msl", 1013.0),
+                        "DEWP": weather.get("dew_point_2m", 10.0),
+                        "WSPM": weather.get("wind_speed_10m", 2.0),
+                        "SO2": air.get("sulphur_dioxide", 0.0),
+                        "NO2": air.get("nitrogen_dioxide", 0.0),
+                        "PM10": air.get("pm10", 0.0)
+                    }
+                    run_pred = True
+                    
+                    with st.expander("Detail Data Realtime", expanded=False):
+                        w_col, a_col = st.columns(2)
+                        w_col.write("**Cuaca (Open-Meteo)**")
+                        w_col.json(weather)
+                        a_col.write("**Polutan (Open-Meteo)**")
+                        a_col.json(air)
+                except Exception as e:
+                    st.error(f"Gagal mengambil data dari API: {e}")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        run = st.button("Jalankan Prediksi", use_container_width=True, type="primary")
+        with tab_manual:
+            with st.container(border=True):
+                st.markdown('<div class="tag-pill">Parameter Input</div>', unsafe_allow_html=True)
+
+                st.markdown("""
+                <div style="font-size:0.85rem;font-weight:700;color:var(--accent-cyan);margin:0.5rem 0 0.8rem;display:flex;align-items:center;gap:0.4rem;">
+                  <span style="font-size:1rem;">🌦️</span> KONDISI ATMOSFER
+                </div>""", unsafe_allow_html=True)
+
+                g1, g2 = st.columns(2)
+                with g1:
+                    temp = st.slider("Suhu (°C)",         -10.0, 40.0,  25.0, 0.5)
+                    dewp = st.slider("Titik Embun (°C)",  -30.0, 30.0,  10.0, 0.5)
+                with g2:
+                    pres = st.slider("Tekanan (hPa)",     990.0,1040.0,1013.0, 0.5)
+                    wspm = st.slider("Kec. Angin (m/s)",    0.0, 10.0,   2.0,  0.1)
+
+                st.markdown("""
+                <div style="font-size:0.85rem;font-weight:700;color:var(--accent-purple);margin:1.2rem 0 0.8rem;display:flex;align-items:center;gap:0.4rem;">
+                  <span style="font-size:1rem;">💨</span> KADAR POLUTAN UDARA
+                </div>""", unsafe_allow_html=True)
+
+                g3, g4 = st.columns(2)
+                with g3:
+                    so2  = st.slider("SO₂ (µg/m³)",        0.0,200.0,  20.0, 1.0)
+                    no2  = st.slider("NO₂ (µg/m³)",        0.0,250.0,  40.0,  1.0)
+                with g4:
+                    pm10 = st.slider("PM10 (µg/m³)",       0.0, 500.0, 60.0, 1.0)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Jalankan Prediksi Manual", use_container_width=True, type="primary"):
+                feats = {"TEMP":temp,"PRES":pres,"DEWP":dewp,"WSPM":wspm,"SO2":so2,"NO2":no2,"PM10":pm10}
+                run_pred = True
 
     # ── OUTPUT PANEL ─────────────────────────────────────────────────────────
     with col_R:
-        if run and model_ready:
-            feats = {"TEMP":temp,"PRES":pres,"DEWP":dewp,"WSPM":wspm,"SO2":so2,"NO2":no2,"PM10":pm10}
+        if run_pred and model_ready:
             pm25  = max(0.0, model.predict_single(feats))
             res   = infer_category(pm25)
             cat   = res["category"]
