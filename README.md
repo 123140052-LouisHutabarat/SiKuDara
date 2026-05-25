@@ -14,8 +14,8 @@
 | 1  | [Ade Putri Tifani] | [123140011] | Preprocessing & EDA Data |
 | 2  | [Natasya Felisita Br Ginting] | [123140017] | Implementasi PSO |
 | 3  | [Louis Hutabarat] | [123140052] | Implementasi ANN & Training |
-| 4  | [Martino Kelvin] | [123140165] | Implementasi Fuzzy Logic |
-| 5  | [Abel] | [NIM] | Tampilan Streamlit & Integrasi |
+| 4  | [Abel Fortino] | [123140111] | Implementasi Fuzzy Logic |
+| 5  | [Martino Kelvin] | [123140165] | Tampilan Streamlit & Integrasi |
 
 ---
 
