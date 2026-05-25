@@ -11,11 +11,11 @@
 
 | No | Nama | NIM | Tugas |
 |----|------|-----|-------|
-| 1  | [Nama Anggota 1] | [NIM] | Preprocessing & EDA Data |
-| 2  | [Nama Anggota 2] | [NIM] | Implementasi PSO |
-| 3  | [Nama Anggota 3] | [NIM] | Implementasi ANN & Training |
-| 4  | [Nama Anggota 4] | [NIM] | Implementasi Fuzzy Logic |
-| 5  | [Nama Anggota 5] | [NIM] | Tampilan Streamlit & Integrasi |
+| 1  | [Ade Putri Tifani] | [123140011] | Preprocessing & EDA Data |
+| 2  | [Natasya Felisita Br Ginting] | [123140017] | Implementasi PSO |
+| 3  | [Louis Hutabarat] | [123140052] | Implementasi ANN & Training |
+| 4  | [Martino Kelvin] | [123140165] | Implementasi Fuzzy Logic |
+| 5  | [Abel] | [NIM] | Tampilan Streamlit & Integrasi |
 
 ---
 
