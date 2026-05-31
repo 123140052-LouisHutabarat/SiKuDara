@@ -164,11 +164,6 @@ joblib==1.3.2
 - Tombol **"Prediksi Sekarang"**
 - Output berupa nilai PM2.5, kategori kualitas udara berwarna, dan saran aktivitas
 
-### Halaman Visualisasi
-- Grafik tren kualitas udara historis
-- Distribusi kategori kualitas udara
-- Perbandingan nilai prediksi vs aktual
-
 ### Halaman Tentang Model
 - Penjelasan cara kerja ANN, PSO, dan Fuzzy Logic
 - Metrik akurasi model (MAE, RMSE, R²)

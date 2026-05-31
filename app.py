@@ -3,14 +3,12 @@ import os
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-from fuzzy_engine import infer_category, get_all_memberships_curve, CATEGORY_CONFIG
+from fuzzy_engine import infer_category
 import requests
 import folium
 from streamlit_folium import st_folium
 from streamlit_searchbox import st_searchbox
+
 
 import sys
 from train_model import ANNModel
@@ -655,15 +653,6 @@ COLORS = {
     "BERBAHAYA":   {"hex": "#ef4444", "rgba": "rgba(239,68,68,{})"},
 }
 
-PLOT_BASE = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="rgba(128,128,128,0.85)", family="Plus Jakarta Sans", size=11),
-    margin=dict(l=10, r=10, t=40, b=10),
-)
-AX = dict(gridcolor="rgba(128,128,128,0.12)", zerolinecolor="rgba(128,128,128,0.2)",
-          linecolor="rgba(128,128,128,0.2)", tickfont=dict(color="rgba(128,128,128,0.7)"))
-
 # ─── LOAD MODEL ───────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="Memuat model...")
 def load_resources():
@@ -692,7 +681,7 @@ with st.sidebar:
     st.divider()
     st.markdown('<div class="nav-label">Navigasi</div>', unsafe_allow_html=True)
 
-    page = st.radio("", ["Prediksi", "Visualisasi", "Tentang Model"],
+    page = st.radio("", ["Prediksi", "Tentang Model"],
                     label_visibility="collapsed")
 
     st.divider()
@@ -953,36 +942,6 @@ if page == "Prediksi":
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Gauge
-            fig_g = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=pm25,
-                title={"text": "Indeks PM2.5", "font": {"size": 12, "color": "rgba(128,128,128,0.7)"}},
-                gauge={
-                    "axis": {"range": [0, 200],
-                             "tickcolor": "rgba(128,128,128,0.3)",
-                             "tickfont": {"size": 10},
-                             "nticks": 5},
-                    "bar":  {"color": col_h, "thickness": 0.2},
-                    "bgcolor": "rgba(128,128,128,0.08)",
-                    "borderwidth": 0,
-                    "steps": [
-                        {"range": [0,   50],  "color": "rgba(34,197,94,0.15)"},
-                        {"range": [50,  100], "color": "rgba(234,179,8,0.15)"},
-                        {"range": [100, 150], "color": "rgba(249,115,22,0.15)"},
-                        {"range": [150, 200], "color": "rgba(239,68,68,0.15)"},
-                    ],
-                    "threshold": {"line": {"color": col_h, "width": 2}, "value": pm25},
-                },
-                number={"suffix": " µg/m³",
-                        "font": {"color": "rgba(128,128,128,0.95)", "size": 15, "family": "JetBrains Mono"}},
-            ))
-            fig_g.update_layout(
-                **{**PLOT_BASE, "margin": dict(l=25, r=25, t=40, b=5)},
-                height=240,
-            )
-            st.plotly_chart(fig_g, use_container_width=True)
-
             # Membership bars
             bars_html = "".join(
                 f'<div class="mf-row">'
@@ -1039,115 +998,7 @@ if page == "Prediksi":
     """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — VISUALISASI
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "Visualisasi":
-    st.markdown("""
-    <div class="page-header">
-      <h1 class="page-title">Visualisasi & Analisis</h1>
-      <p class="page-sub">Eksplorasi performa model, perilaku Fuzzy Logic, dan proses optimasi PSO</p>
-    </div>""", unsafe_allow_html=True)
 
-    if not model_ready:
-        st.warning("Model belum tersedia.")
-        st.stop()
-
-    tab1, tab2, tab3 = st.tabs(["Prediksi vs Aktual", "Fuzzy Membership", "Konvergensi PSO"])
-
-    with tab1:
-        yt = metrics["y_test"];  yp = metrics["y_pred_test"]
-        n  = min(300, len(yt))
-        ix = np.sort(np.random.choice(len(yt), n, replace=False))
-
-        col_plot, col_hist = st.columns([11, 9], gap="medium")
-
-        with col_plot:
-            fig = make_subplots(
-                rows=2, cols=1,
-                subplot_titles=("Scatter — Prediksi vs Aktual (300 sampel acak)",
-                                "Perbandingan Tren — Nilai Aktual vs Prediksi"),
-                vertical_spacing=0.13,
-            )
-            fig.add_trace(go.Scatter(
-                x=yt[ix], y=yp[ix], mode="markers",
-                marker=dict(color=yt[ix], colorscale="Plasma", size=5.5, opacity=0.6,
-                            colorbar=dict(title="PM2.5", thickness=10, len=0.44, y=0.78, tickfont=dict(size=9))),
-                name="Sampel", showlegend=False), row=1, col=1)
-            rng = [0, float(max(yt.max(), yp.max()))]
-            fig.add_trace(go.Scatter(x=rng, y=rng, mode="lines",
-                line=dict(color="rgba(255,255,255,0.15)", dash="dash", width=1),
-                name="Garis Ideal"), row=1, col=1)
-
-            fig.add_trace(go.Scatter(y=yt[ix], mode="lines", name="Aktual",
-                line=dict(color="#6366f1", width=2, shape="spline")), row=2, col=1)
-            fig.add_trace(go.Scatter(y=yp[ix], mode="lines", name="Prediksi",
-                line=dict(color="#10b981", width=2, shape="spline", dash="dot")), row=2, col=1)
-
-            fig.update_layout(**PLOT_BASE, height=580, showlegend=True,
-                legend=dict(orientation="h", y=1.02, x=1, xanchor="right",
-                            bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
-                hoverlabel=dict(bgcolor="#1f2937", bordercolor="rgba(128,128,128,0.3)", font=dict(family="Plus Jakarta Sans", color="#ffffff")))
-            fig.update_xaxes(**AX); fig.update_yaxes(**AX)
-            fig.update_annotations(font_color="rgba(128,128,128,0.75)", font_size=11)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_hist:
-            err = yt - yp
-            fig_e = px.histogram(x=err, nbins=60, opacity=0.85,
-                title="Distribusi Residual  (Aktual − Prediksi)",
-                labels={"x": "Residual (µg/m³)", "y": "Frekuensi"},
-                color_discrete_sequence=["#06b6d4"])
-            fig_e.update_layout(**PLOT_BASE, height=580, hoverlabel=dict(bgcolor="#1f2937", bordercolor="rgba(128,128,128,0.3)", font=dict(family="Plus Jakarta Sans", color="#ffffff")))
-            fig_e.update_xaxes(**AX); fig_e.update_yaxes(**AX)
-            st.plotly_chart(fig_e, use_container_width=True)
-
-    with tab2:
-        curve = get_all_memberships_curve()
-        fig_f = go.Figure()
-        for cat, cdata in COLORS.items():
-            fig_f.add_trace(go.Scatter(
-                x=curve["x"], y=curve[cat], name=cat, mode="lines",
-                line=dict(color=cdata["hex"], width=2.5, shape="spline"),
-                fill="tozeroy",
-                fillcolor=cdata["rgba"].format("0.12")))
-        fig_f.update_layout(**PLOT_BASE, height=400,
-            title="Fungsi Keanggotaan PM2.5  ·  Fuzzy Logic Mamdani",
-            xaxis=dict(title="Nilai PM2.5 (µg/m³)", **AX),
-            yaxis=dict(title="Derajat Keanggotaan (µ)", range=[0, 1.1], **AX),
-            legend=dict(orientation="h", y=-0.18, bgcolor="rgba(0,0,0,0)"),
-            hoverlabel=dict(bgcolor="#1f2937", bordercolor="rgba(128,128,128,0.3)", font=dict(family="Plus Jakarta Sans", color="#ffffff")))
-        st.plotly_chart(fig_f, use_container_width=True)
-
-    with tab3:
-        hist = metrics.get("pso_history", [])
-        if hist:
-            iters = list(range(1, len(hist) + 1))
-            fig_p = go.Figure()
-            fig_p.add_trace(go.Scatter(y=hist, x=iters, mode="lines", name="Best MSE",
-                line=dict(color="#6366f1", width=2.5, shape="spline"),
-                fill="tozeroy", fillcolor="rgba(99,102,241,0.08)"))
-            # Best point
-            best_i = int(np.argmin(hist))
-            fig_p.add_trace(go.Scatter(
-                x=[best_i + 1], y=[hist[best_i]],
-                mode="markers", name=f"Global Best (iter {best_i+1})",
-                marker=dict(color="#10b981", size=10, symbol="diamond")))
-            fig_p.update_layout(**PLOT_BASE, height=380,
-                title="Konvergensi PSO  ·  Best MSE per Iterasi",
-                xaxis=dict(title="Iterasi", **AX),
-                yaxis=dict(title="MSE (Val Set)", **AX),
-                legend=dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
-                hoverlabel=dict(bgcolor="#1f2937", bordercolor="rgba(128,128,128,0.3)", font=dict(family="Plus Jakarta Sans", color="#ffffff")))
-            st.plotly_chart(fig_p, use_container_width=True)
-
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("MSE Awal",   f"{hist[0]:.2f}")
-            c2.metric("MSE Akhir",  f"{hist[-1]:.2f}", delta=f"{hist[-1]-hist[0]:.2f}")
-            c3.metric("Reduksi MSE",f"{(1-hist[-1]/hist[0])*100:.1f}%")
-            c4.metric("Iterasi Terbaik", f"{best_i+1}")
-        else:
-            st.info("Data konvergensi tidak tersedia.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
