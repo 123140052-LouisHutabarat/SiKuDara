@@ -183,7 +183,7 @@ joblib==1.3.2
 
 ## 🎥 Video Presentasi
 
-📺 Link YouTube: [*akan diupdate*]
+📺 Link YouTube: https://youtu.be/CjCazlC49Fc
 
 ---
 
